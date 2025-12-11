@@ -1,0 +1,18 @@
+[coingecko]
+base_url = "https://api.coingecko.com/api/v3"
+top_n = 200
+
+[binance]
+spot_base_url = "https://api.binance.com/api/v3"
+futures_base_url = "https://fapi.binance.com"
+kline_limit = 450
+
+[analysis]
+boll_period = 400
+boll_std_dev = 2.0
+history_check_count = 50
+history_threshold = 25      # 25根k线要<boll线 推荐是25 上面值的一半
+oi_multiplier = 0.91       # 持仓量比 推荐0.91
+
+[scheduler]
+interval_minutes = 15
