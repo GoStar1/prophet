@@ -17,7 +17,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    info!("Prophet v2 starting - Multi-timeframe BOLL + Open Interest Filter");
+    info!("Prophet v2 starting - Multi-timeframe BOLL + Open Interest Filter (6 conditions)");
 
     // Load configuration
     let settings = Settings::load()?;
@@ -54,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
         match run_analysis(&coingecko, &binance, &calculator, &notifier, &settings).await {
             Ok(count) => {
                 info!(
-                    "Analysis completed. Found {} coins meeting all 7 conditions",
+                    "Analysis completed. Found {} coins meeting all 6 conditions",
                     count
                 );
 
@@ -64,7 +64,10 @@ async fn main() -> anyhow::Result<()> {
                 } else {
                     // No email sent this cycle
                     no_email_counter += 1;
-                    info!("No email counter: {}/{}", no_email_counter, HEARTBEAT_THRESHOLD);
+                    info!(
+                        "No email counter: {}/{}",
+                        no_email_counter, HEARTBEAT_THRESHOLD
+                    );
 
                     if no_email_counter >= HEARTBEAT_THRESHOLD {
                         info!("Sending heartbeat email to confirm system is running...");
@@ -128,7 +131,7 @@ async fn run_analysis(
             Ok(analyzed) => {
                 if analyzed.meets_all_conditions() {
                     info!(
-                        "MATCH: {} ({}) meets all 7 conditions!",
+                        "MATCH: {} ({}) meets all 6 conditions!",
                         coin.name, futures_symbol
                     );
                 }
@@ -145,7 +148,10 @@ async fn run_analysis(
         if (processed + skipped_error) % 20 == 0 {
             info!(
                 "Progress: {} analyzed, {} skipped (no perp: {}, error: {})",
-                processed, skipped_no_perp + skipped_error, skipped_no_perp, skipped_error
+                processed,
+                skipped_no_perp + skipped_error,
+                skipped_no_perp,
+                skipped_error
             );
         }
     }
@@ -165,14 +171,14 @@ async fn run_analysis(
         .collect();
 
     info!(
-        "Found {} coins meeting all 7 conditions (out of {} analyzed)",
+        "Found {} coins meeting all 6 conditions (out of {} analyzed)",
         matching.len(),
         analyzed_coins.len()
     );
 
     // Print results to console
     if !matching.is_empty() {
-        println!("\n========== COINS MEETING ALL 7 CONDITIONS ==========");
+        println!("\n========== COINS MEETING ALL 6 CONDITIONS ==========");
         println!(
             "{:<6} {:<15} {:<10} {:>12} {:>12} {:>12}",
             "Rank", "Name", "Symbol", "Price", "15m Upper", "OI Ratio"
@@ -231,7 +237,7 @@ async fn analyze_coin(
         .map(|k| k.close)
         .unwrap_or(coin.current_price);
 
-    // Check all 7 conditions
+    // Check all 6 conditions
     let cond1 = current_price > boll_15m.upper;
     let cond2 = current_price > boll_30m.middle;
     let cond3 = current_price > boll_4h.middle;
@@ -239,12 +245,13 @@ async fn analyze_coin(
     let check_count = settings.analysis.history_check_count;
     let threshold = settings.analysis.history_threshold;
 
-    let cond4 = calculator.check_history_condition(&klines_15m, boll_15m.upper, check_count, threshold);
-    let cond5 = calculator.check_history_condition(&klines_30m, boll_30m.middle, check_count, threshold);
-    let cond6 = calculator.check_history_condition(&klines_4h, boll_4h.middle, check_count, threshold);
+    let cond4 =
+        calculator.check_history_condition(&klines_15m, boll_15m.upper, check_count, threshold);
+    let cond5 =
+        calculator.check_history_condition(&klines_30m, boll_30m.middle, check_count, threshold);
 
     // OI condition: current_oi * oi_multiplier > min_oi_3d
-    let cond7 = current_oi * settings.analysis.oi_multiplier > min_oi;
+    let cond6 = current_oi * settings.analysis.oi_multiplier > min_oi;
 
     Ok(AnalyzedCoin {
         coin: CoinInfo {
@@ -265,8 +272,7 @@ async fn analyze_coin(
         cond3_price_above_4h_middle: cond3,
         cond4_15m_history_below_upper: cond4,
         cond5_30m_history_below_middle: cond5,
-        cond6_4h_history_below_middle: cond6,
-        cond7_oi_condition: cond7,
+        cond6_oi_condition: cond6,
         current_oi,
         min_oi_3d: min_oi,
     })

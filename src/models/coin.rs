@@ -31,28 +31,26 @@ pub struct AnalyzedCoin {
     pub coin: CoinInfo,
     pub current_price: f64,
     pub boll: MultiTimeframeBoll,
-    // 7个条件的结果
+    // 6个条件的结果
     pub cond1_price_above_15m_upper: bool,
     pub cond2_price_above_30m_middle: bool,
     pub cond3_price_above_4h_middle: bool,
     pub cond4_15m_history_below_upper: bool,
     pub cond5_30m_history_below_middle: bool,
-    pub cond6_4h_history_below_middle: bool,
-    pub cond7_oi_condition: bool,
+    pub cond6_oi_condition: bool,
     // 持仓量数据
     pub current_oi: f64,
     pub min_oi_3d: f64,
 }
 
 impl AnalyzedCoin {
-    /// 检查是否满足所有7个条件
+    /// 检查是否满足所有6个条件
     pub fn meets_all_conditions(&self) -> bool {
         self.cond1_price_above_15m_upper
             && self.cond2_price_above_30m_middle
             && self.cond3_price_above_4h_middle
             && self.cond4_15m_history_below_upper
             && self.cond5_30m_history_below_middle
-            && self.cond6_4h_history_below_middle
-            && self.cond7_oi_condition
+            && self.cond6_oi_condition
     }
 }

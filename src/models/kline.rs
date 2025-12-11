@@ -15,7 +15,9 @@ pub struct Kline {
 impl Kline {
     pub fn from_binance_response(data: &[Value]) -> Result<Self> {
         if data.len() < 7 {
-            return Err(AppError::BinanceApi("Invalid kline data format".to_string()));
+            return Err(AppError::BinanceApi(
+                "Invalid kline data format".to_string(),
+            ));
         }
 
         let parse_f64 = |v: &Value| -> Result<f64> {

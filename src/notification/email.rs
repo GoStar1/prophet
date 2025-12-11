@@ -20,7 +20,7 @@ impl EmailNotifier {
         let tls_params = TlsParameters::builder(config.smtp_server.clone())
             .dangerous_accept_invalid_certs(true)
             .build()
-            .map_err(|e| AppError::EmailError(format!("TLS params error: {}", e)))?;
+            .map_err(|e| AppError::EmailError(format!("TLS params error: {e}")))?;
 
         let mailer = if config.smtp_port == 465 || config.smtp_port == 994 {
             AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&config.smtp_server)
@@ -59,11 +59,10 @@ impl EmailNotifier {
 <body>
     <h2>Prophet System Heartbeat</h2>
     <p class="status">✓ System is running normally</p>
-    <p>This is an automatic heartbeat notification sent because no coins met all 7 conditions in the last 100 analysis cycles.</p>
-    <p>Generated at: {}</p>
+    <p>This is an automatic heartbeat notification sent because no coins met all 6 conditions in the last 100 analysis cycles.</p>
+    <p>Generated at: {timestamp}</p>
 </body>
-</html>"#,
-            timestamp
+</html>"#
         );
 
         let from_addr = format!("Prophet <{}>", self.config.from);
@@ -73,11 +72,11 @@ impl EmailNotifier {
             .from(
                 from_addr
                     .parse()
-                    .map_err(|e| AppError::EmailError(format!("Invalid from address: {}", e)))?,
+                    .map_err(|e| AppError::EmailError(format!("Invalid from address: {e}")))?,
             )
             .to(to_addr
                 .parse()
-                .map_err(|e| AppError::EmailError(format!("Invalid to address: {}", e)))?)
+                .map_err(|e| AppError::EmailError(format!("Invalid to address: {e}")))?)
             .subject(subject)
             .header(ContentType::TEXT_HTML)
             .body(body)
@@ -86,7 +85,7 @@ impl EmailNotifier {
         self.mailer
             .send(email)
             .await
-            .map_err(|e| AppError::EmailError(format!("Send failed: {}", e)))?;
+            .map_err(|e| AppError::EmailError(format!("Send failed: {e}")))?;
 
         Ok(())
     }
@@ -99,7 +98,7 @@ impl EmailNotifier {
 
         let body = self.build_email_body_v2(coins);
         let subject = format!(
-            "Prophet v2: {} coins meet ALL 7 conditions - {}",
+            "Prophet v2: {} coins meet ALL 6 conditions - {}",
             coins.len(),
             Local::now().format("%Y-%m-%d %H:%M")
         );
@@ -111,11 +110,11 @@ impl EmailNotifier {
             .from(
                 from_addr
                     .parse()
-                    .map_err(|e| AppError::EmailError(format!("Invalid from address: {}", e)))?,
+                    .map_err(|e| AppError::EmailError(format!("Invalid from address: {e}")))?,
             )
             .to(to_addr
                 .parse()
-                .map_err(|e| AppError::EmailError(format!("Invalid to address: {}", e)))?)
+                .map_err(|e| AppError::EmailError(format!("Invalid to address: {e}")))?)
             .subject(subject)
             .header(ContentType::TEXT_HTML)
             .body(body)
@@ -124,7 +123,7 @@ impl EmailNotifier {
         self.mailer
             .send(email)
             .await
-            .map_err(|e| AppError::EmailError(format!("Send failed: {}", e)))?;
+            .map_err(|e| AppError::EmailError(format!("Send failed: {e}")))?;
 
         Ok(())
     }
@@ -142,14 +141,33 @@ impl EmailNotifier {
 
             // 条件状态显示
             let cond_status = format!(
-                "{}{}{}{}{}{}{}",
-                if coin.cond1_price_above_15m_upper { "1" } else { "-" },
-                if coin.cond2_price_above_30m_middle { "2" } else { "-" },
-                if coin.cond3_price_above_4h_middle { "3" } else { "-" },
-                if coin.cond4_15m_history_below_upper { "4" } else { "-" },
-                if coin.cond5_30m_history_below_middle { "5" } else { "-" },
-                if coin.cond6_4h_history_below_middle { "6" } else { "-" },
-                if coin.cond7_oi_condition { "7" } else { "-" },
+                "{}{}{}{}{}{}",
+                if coin.cond1_price_above_15m_upper {
+                    "1"
+                } else {
+                    "-"
+                },
+                if coin.cond2_price_above_30m_middle {
+                    "2"
+                } else {
+                    "-"
+                },
+                if coin.cond3_price_above_4h_middle {
+                    "3"
+                } else {
+                    "-"
+                },
+                if coin.cond4_15m_history_below_upper {
+                    "4"
+                } else {
+                    "-"
+                },
+                if coin.cond5_30m_history_below_middle {
+                    "5"
+                } else {
+                    "-"
+                },
+                if coin.cond6_oi_condition { "6" } else { "-" },
             );
 
             rows.push_str(&format!(
@@ -200,7 +218,6 @@ impl EmailNotifier {
         <li>Price > 4h BOLL Middle</li>
         <li>15m: 50 candles, 25+ below upper</li>
         <li>30m: 50 candles, 25+ below middle</li>
-        <li>4h: 50 candles, 25+ below middle</li>
         <li>Current OI * 0.9 > 3-day Min OI</li>
     </ol>
 
@@ -220,7 +237,7 @@ impl EmailNotifier {
         {}
     </table>
 
-    <p><strong>Total: {} coins meeting ALL 7 conditions</strong></p>
+    <p><strong>Total: {} coins meeting ALL 6 conditions</strong></p>
 </body>
 </html>"#,
             timestamp,

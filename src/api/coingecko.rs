@@ -37,7 +37,7 @@ impl CoinGeckoClient {
     pub async fn get_top_coins(&self, n: usize) -> Result<Vec<CoinInfo>> {
         let mut all_coins = Vec::new();
         let per_page = 250;
-        let pages = (n + per_page - 1) / per_page;
+        let pages = n.div_ceil(per_page);
 
         for page in 1..=pages {
             self.rate_limiter.acquire().await;
@@ -52,10 +52,7 @@ impl CoinGeckoClient {
             if !response.status().is_success() {
                 let status = response.status();
                 let text = response.text().await.unwrap_or_default();
-                return Err(AppError::CoinGeckoApi(format!(
-                    "Status {}: {}",
-                    status, text
-                )));
+                return Err(AppError::CoinGeckoApi(format!("Status {status}: {text}")));
             }
 
             let coins: Vec<CoinInfo> = response.json().await?;
@@ -68,9 +65,5 @@ impl CoinGeckoClient {
 
         all_coins.truncate(n);
         Ok(all_coins)
-    }
-
-    pub fn to_binance_symbol(coin: &CoinInfo) -> String {
-        format!("{}USDT", coin.symbol.to_uppercase())
     }
 }

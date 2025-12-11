@@ -61,7 +61,7 @@ impl BinanceClient {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(AppError::BinanceApi(format!("exchangeInfo failed: {}", text)));
+            return Err(AppError::BinanceApi(format!("exchangeInfo failed: {text}")));
         }
 
         let info: ExchangeInfo = response.json().await?;
@@ -109,7 +109,7 @@ impl BinanceClient {
                 return Err(AppError::SymbolNotFound(symbol.to_string()));
             }
 
-            return Err(AppError::BinanceApi(format!("Status {}: {}", status, text)));
+            return Err(AppError::BinanceApi(format!("Status {status}: {text}")));
         }
 
         let data: Vec<Vec<serde_json::Value>> = response.json().await?;
@@ -133,7 +133,7 @@ impl BinanceClient {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(AppError::BinanceApi(format!("openInterest failed: {}", text)));
+            return Err(AppError::BinanceApi(format!("openInterest failed: {text}")));
         }
 
         let oi: OpenInterest = response.json().await?;
@@ -154,8 +154,7 @@ impl BinanceClient {
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
             return Err(AppError::BinanceApi(format!(
-                "openInterestHist failed: {}",
-                text
+                "openInterestHist failed: {text}"
             )));
         }
 
@@ -211,15 +210,5 @@ impl BinanceClient {
             current_oi.open_interest_f64(),
             min_oi,
         ))
-    }
-
-    pub fn clone_inner(&self) -> Self {
-        Self {
-            client: self.client.clone(),
-            config: self.config.clone(),
-            rate_limiter: Arc::clone(&self.rate_limiter),
-            semaphore: Arc::clone(&self.semaphore),
-            perpetual_symbols: Arc::clone(&self.perpetual_symbols),
-        }
     }
 }

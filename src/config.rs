@@ -29,9 +29,9 @@ pub struct BinanceConfig {
 pub struct AnalysisConfig {
     pub boll_period: usize,
     pub boll_std_dev: f64,
-    pub history_check_count: usize,  // 50
-    pub history_threshold: usize,    // 25
-    pub oi_multiplier: f64,          // 持仓量乘数，如 0.9
+    pub history_check_count: usize, // 50
+    pub history_threshold: usize,   // 25
+    pub oi_multiplier: f64,         // 持仓量乘数，如 0.9
 }
 
 #[derive(Debug, Clone, Default)]
@@ -71,10 +71,8 @@ impl Settings {
                 .map_err(|_| ConfigError::NotFound("EMAIL_USERNAME".into()))?,
             password: env::var("EMAIL_PASSWORD")
                 .map_err(|_| ConfigError::NotFound("EMAIL_PASSWORD".into()))?,
-            from: env::var("EMAIL_FROM")
-                .map_err(|_| ConfigError::NotFound("EMAIL_FROM".into()))?,
-            to: env::var("EMAIL_TO")
-                .map_err(|_| ConfigError::NotFound("EMAIL_TO".into()))?,
+            from: env::var("EMAIL_FROM").map_err(|_| ConfigError::NotFound("EMAIL_FROM".into()))?,
+            to: env::var("EMAIL_TO").map_err(|_| ConfigError::NotFound("EMAIL_TO".into()))?,
         };
 
         Ok(settings)
