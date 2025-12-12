@@ -59,7 +59,7 @@ impl EmailNotifier {
 <body>
     <h2>Prophet System Heartbeat</h2>
     <p class="status">✓ System is running normally</p>
-    <p>This is an automatic heartbeat notification sent because no coins met all 6 conditions in the last 100 analysis cycles.</p>
+    <p>This is an automatic heartbeat notification sent because no coins met all 7 conditions in the last 100 analysis cycles.</p>
     <p>Generated at: {timestamp}</p>
 </body>
 </html>"#
@@ -98,7 +98,7 @@ impl EmailNotifier {
 
         let body = self.build_email_body_v2(coins);
         let subject = format!(
-            "Prophet v2: {} coins meet ALL 6 conditions - {}",
+            "Prophet v2: {} coins meet ALL 7 conditions - {}",
             coins.len(),
             Local::now().format("%Y-%m-%d %H:%M")
         );
@@ -141,7 +141,7 @@ impl EmailNotifier {
 
             // 条件状态显示
             let cond_status = format!(
-                "{}{}{}{}{}{}",
+                "{}{}{}{}{}{}{}",
                 if coin.cond1_price_above_15m_upper {
                     "1"
                 } else {
@@ -168,6 +168,11 @@ impl EmailNotifier {
                     "-"
                 },
                 if coin.cond6_oi_condition { "6" } else { "-" },
+                if coin.cond7_4h_volume_condition {
+                    "7"
+                } else {
+                    "-"
+                },
             );
 
             rows.push_str(&format!(
@@ -219,6 +224,7 @@ impl EmailNotifier {
         <li>15m: 50 candles, 25+ below upper</li>
         <li>30m: 50 candles, 25+ below middle</li>
         <li>Current OI * 0.9 > 3-day Min OI</li>
+        <li>4h: Latest Volume * 2 > Sum of Previous 6 Volumes</li>
     </ol>
 
     <h3>Matching Coins ({} found):</h3>
@@ -237,7 +243,7 @@ impl EmailNotifier {
         {}
     </table>
 
-    <p><strong>Total: {} coins meeting ALL 6 conditions</strong></p>
+    <p><strong>Total: {} coins meeting ALL 7 conditions</strong></p>
 </body>
 </html>"#,
             timestamp,

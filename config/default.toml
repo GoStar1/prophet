@@ -1,6 +1,6 @@
 [coingecko]
 base_url = "https://api.coingecko.com/api/v3"
-top_n = 200
+top_n = 250
 
 [binance]
 spot_base_url = "https://api.binance.com/api/v3"

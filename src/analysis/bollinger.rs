@@ -85,6 +85,17 @@ impl BollingerCalculator {
     }
 }
 
+/// 检查4小时成交量条件：最新一根K线的成交量 * 2 > 最近6根K线成交量总和
+pub fn check_4h_volume_condition(klines: &[Kline]) -> bool {
+    if klines.len() < 7 {
+        return false;
+    }
+    let recent_klines: Vec<&Kline> = klines.iter().rev().take(7).collect();
+    let latest_volume = recent_klines[0].volume;
+    let sum_of_6: f64 = recent_klines[1..7].iter().map(|k| k.volume).sum();
+    latest_volume * 2.0 > sum_of_6
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

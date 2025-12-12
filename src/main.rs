@@ -1,4 +1,4 @@
-use prophet::analysis::BollingerCalculator;
+use prophet::analysis::{check_4h_volume_condition, BollingerCalculator};
 use prophet::api::{BinanceClient, CoinGeckoClient};
 use prophet::config::Settings;
 use prophet::models::{AnalyzedCoin, CoinInfo, MultiTimeframeBoll};
@@ -17,7 +17,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    info!("Prophet v2 starting - Multi-timeframe BOLL + Open Interest Filter (6 conditions)");
+    info!("Prophet v2 starting - Multi-timeframe BOLL + Open Interest Filter (7 conditions)");
 
     // Load configuration
     let settings = Settings::load()?;
@@ -54,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
         match run_analysis(&coingecko, &binance, &calculator, &notifier, &settings).await {
             Ok(count) => {
                 info!(
-                    "Analysis completed. Found {} coins meeting all 6 conditions",
+                    "Analysis completed. Found {} coins meeting all 7 conditions",
                     count
                 );
 
@@ -131,7 +131,7 @@ async fn run_analysis(
             Ok(analyzed) => {
                 if analyzed.meets_all_conditions() {
                     info!(
-                        "MATCH: {} ({}) meets all 6 conditions!",
+                        "MATCH: {} ({}) meets all 7 conditions!",
                         coin.name, futures_symbol
                     );
                 }
@@ -171,14 +171,14 @@ async fn run_analysis(
         .collect();
 
     info!(
-        "Found {} coins meeting all 6 conditions (out of {} analyzed)",
+        "Found {} coins meeting all 7 conditions (out of {} analyzed)",
         matching.len(),
         analyzed_coins.len()
     );
 
     // Print results to console
     if !matching.is_empty() {
-        println!("\n========== COINS MEETING ALL 6 CONDITIONS ==========");
+        println!("\n========== COINS MEETING ALL 7 CONDITIONS ==========");
         println!(
             "{:<6} {:<15} {:<10} {:>12} {:>12} {:>12}",
             "Rank", "Name", "Symbol", "Price", "15m Upper", "OI Ratio"
@@ -253,6 +253,9 @@ async fn analyze_coin(
     // OI condition: current_oi * oi_multiplier > min_oi_3d
     let cond6 = current_oi * settings.analysis.oi_multiplier > min_oi;
 
+    // 4h volume condition: latest_volume * 2 > sum of previous 6 volumes
+    let cond7 = check_4h_volume_condition(&klines_4h);
+
     Ok(AnalyzedCoin {
         coin: CoinInfo {
             futures_symbol: Some(futures_symbol.to_string()),
@@ -273,6 +276,7 @@ async fn analyze_coin(
         cond4_15m_history_below_upper: cond4,
         cond5_30m_history_below_middle: cond5,
         cond6_oi_condition: cond6,
+        cond7_4h_volume_condition: cond7,
         current_oi,
         min_oi_3d: min_oi,
     })
