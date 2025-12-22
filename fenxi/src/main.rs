@@ -4,17 +4,15 @@ mod loader;
 mod models;
 mod output;
 
-use crate::analysis::Scanner;
-use crate::loader::{KlineLoader, MetricsLoader};
+use crate::analysis::FastScanner;
 use crate::output::CsvWriter;
 use indicatif::{ProgressBar, ProgressStyle};
+use rayon::prelude::*;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
-use tracing::{error, info, warn};
-
-const KLINE_WINDOW_SIZE: usize = 450;
-const METRICS_WINDOW_SIZE: usize = 864;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use tracing::info;
 
 fn get_symbols(data_path: &Path) -> Vec<String> {
     let klines_path = data_path.join("klines");
@@ -80,10 +78,7 @@ fn main() -> anyhow::Result<()> {
     info!("Output path: {:?}", output_path);
 
     let symbols = get_symbols(data_path);
-    info!("Scanning {} symbols...", symbols.len());
-
-    let mut writer = CsvWriter::new(output_path)?;
-    let scanner = Scanner::new();
+    info!("Scanning {} symbols in parallel...", symbols.len());
 
     let pb = ProgressBar::new(symbols.len() as u64);
     pb.set_style(
@@ -93,42 +88,33 @@ fn main() -> anyhow::Result<()> {
             .progress_chars("#>-"),
     );
 
-    let mut total_signals = 0;
+    let counter = AtomicUsize::new(0);
+    let scanner = FastScanner::new();
 
-    for symbol in &symbols {
-        pb.set_message(symbol.clone());
+    // 并行扫描所有交易对
+    let all_signals: Vec<_> = symbols
+        .par_iter()
+        .filter_map(|symbol| {
+            let result = scanner.scan_symbol(data_path, symbol);
+            counter.fetch_add(1, Ordering::Relaxed);
+            pb.set_position(counter.load(Ordering::Relaxed) as u64);
 
-        let result = (|| -> anyhow::Result<Vec<models::BuySignal>> {
-            let mut kline_15m = KlineLoader::new(data_path, symbol, "15m", KLINE_WINDOW_SIZE)?;
-            let mut kline_30m = KlineLoader::new(data_path, symbol, "30m", KLINE_WINDOW_SIZE)?;
-            let mut kline_4h = KlineLoader::new(data_path, symbol, "4h", KLINE_WINDOW_SIZE)?;
-            let mut metrics = MetricsLoader::new(data_path, symbol, METRICS_WINDOW_SIZE)?;
-
-            let signals =
-                scanner.scan_symbol(symbol, &mut kline_15m, &mut kline_30m, &mut kline_4h, &mut metrics)?;
-            Ok(signals)
-        })();
-
-        match result {
-            Ok(signals) => {
-                if !signals.is_empty() {
-                    writer.write_signals(&signals)?;
-                    total_signals += signals.len();
-                    info!("{}: Found {} signals", symbol, signals.len());
-                }
+            match result {
+                Ok(signals) if !signals.is_empty() => Some(signals),
+                _ => None,
             }
-            Err(e) => {
-                warn!("{}: Error - {}", symbol, e);
-            }
-        }
+        })
+        .flatten()
+        .collect();
 
-        pb.inc(1);
-    }
-
-    writer.flush()?;
     pb.finish_with_message("Done!");
 
-    info!("Scan complete! Total signals: {}", total_signals);
+    // 写入结果
+    let mut writer = CsvWriter::new(output_path)?;
+    writer.write_signals(&all_signals)?;
+    writer.flush()?;
+
+    info!("Scan complete! Total signals: {}", all_signals.len());
     info!("Results saved to: {:?}", output_path);
 
     Ok(())
