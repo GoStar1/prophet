@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::models::BuySignal;
+use crate::models::{BuySignal, TradeResult};
 use std::fs::File;
 use std::path::Path;
 
@@ -25,6 +25,18 @@ impl CsvWriter {
     pub fn write_signals(&mut self, signals: &[BuySignal]) -> Result<()> {
         for signal in signals {
             self.write_signal(signal)?;
+        }
+        Ok(())
+    }
+
+    pub fn write_trade(&mut self, trade: &TradeResult) -> Result<()> {
+        self.writer.serialize(trade)?;
+        Ok(())
+    }
+
+    pub fn write_trades(&mut self, trades: &[TradeResult]) -> Result<()> {
+        for trade in trades {
+            self.write_trade(trade)?;
         }
         Ok(())
     }

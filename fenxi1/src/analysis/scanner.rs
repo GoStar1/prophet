@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::models::{BuySignal, Kline, Metrics};
+use crate::models::{BuySignal, Kline, Metrics, TradeResult};
 use std::collections::VecDeque;
 use std::fs::{self, File};
 use std::path::Path;
@@ -157,6 +157,150 @@ impl FastScanner {
         }
 
         Ok(signals)
+    }
+
+    /// 扫描交易对并返回完整的交易记录（含卖出点）
+    pub fn scan_symbol_trades(&self, data_path: &Path, symbol: &str) -> Result<Vec<TradeResult>> {
+        let klines_15m = Self::load_all_klines(data_path, symbol, "15m")?;
+        let klines_30m = Self::load_all_klines(data_path, symbol, "30m")?;
+        let klines_4h = Self::load_all_klines(data_path, symbol, "4h")?;
+        let metrics = Self::load_all_metrics(data_path, symbol)?;
+
+        if klines_15m.len() < BOLL_PERIOD
+            || klines_30m.len() < BOLL_PERIOD
+            || klines_4h.len() < BOLL_PERIOD
+        {
+            return Ok(Vec::new());
+        }
+
+        let boll_15m = Self::calc_all_boll(&klines_15m);
+        let boll_30m = Self::calc_all_boll(&klines_30m);
+        let boll_4h = Self::calc_all_boll(&klines_4h);
+
+        let has_metrics = !metrics.is_empty();
+        let mut trades = Vec::new();
+
+        let mut idx_30m = 0usize;
+        let mut idx_4h = 0usize;
+        let mut metrics_start = 0usize;
+        let mut last_signal_time: Option<i64> = None;
+
+        for i in (BOLL_PERIOD - 1)..klines_15m.len() {
+            let k15 = &klines_15m[i];
+            let timestamp = k15.close_time;
+            let price = k15.close;
+
+            // 冷却期检查
+            if let Some(last_time) = last_signal_time {
+                if timestamp - last_time < COOLDOWN_MS {
+                    continue;
+                }
+            }
+
+            // 同步30m索引
+            while idx_30m + 1 < boll_30m.len()
+                && klines_30m[idx_30m + BOLL_PERIOD].close_time <= timestamp
+            {
+                idx_30m += 1;
+            }
+
+            // 同步4h索引
+            while idx_4h + 1 < boll_4h.len()
+                && klines_4h[idx_4h + BOLL_PERIOD].close_time <= timestamp
+            {
+                idx_4h += 1;
+            }
+
+            if idx_30m >= boll_30m.len() || idx_4h >= boll_4h.len() {
+                continue;
+            }
+
+            let b15 = &boll_15m[i - BOLL_PERIOD + 1];
+            let b30 = &boll_30m[idx_30m];
+            let b4h = &boll_4h[idx_4h];
+
+            // 条件1-3
+            if price <= b15.upper || price <= b30.middle || price <= b4h.middle {
+                continue;
+            }
+
+            // 条件4
+            let start_4 = if i >= HISTORY_CHECK_COUNT { i - HISTORY_CHECK_COUNT + 1 } else { 0 };
+            let count_below_upper = klines_15m[start_4..=i]
+                .iter()
+                .filter(|k| k.close < b15.upper)
+                .count();
+            if count_below_upper < HISTORY_THRESHOLD {
+                continue;
+            }
+
+            // 条件5
+            let start_5 = if idx_30m + BOLL_PERIOD >= HISTORY_CHECK_COUNT {
+                idx_30m + BOLL_PERIOD - HISTORY_CHECK_COUNT + 1
+            } else {
+                0
+            };
+            let end_5 = idx_30m + BOLL_PERIOD;
+            let count_below_middle = klines_30m[start_5..=end_5.min(klines_30m.len() - 1)]
+                .iter()
+                .filter(|k| k.close < b30.middle)
+                .count();
+            if count_below_middle < HISTORY_THRESHOLD {
+                continue;
+            }
+
+            // 条件6
+            let (_, _, cond6) = if has_metrics {
+                Self::check_oi_condition(&metrics, timestamp, &mut metrics_start)
+            } else {
+                (0.0, 0.0, true)
+            };
+            if !cond6 {
+                continue;
+            }
+
+            // 条件7
+            let (cond7, _) = Self::check_4h_volume(&klines_4h, idx_4h + BOLL_PERIOD);
+            if !cond7 {
+                continue;
+            }
+
+            // 买入点确认：以下一根K线收盘价作为买入价
+            if i + 1 >= klines_15m.len() {
+                continue; // 没有下一根K线，跳过
+            }
+
+            let buy_k = &klines_15m[i + 1];
+            let buy_time = buy_k.close_time;
+            let buy_price = buy_k.close;
+
+            // 从买入K线的下一根开始找卖出点
+            for j in (i + 2)..klines_15m.len() {
+                let sell_k = &klines_15m[j];
+                let sell_boll_idx = j - BOLL_PERIOD + 1;
+
+                if sell_boll_idx >= boll_15m.len() {
+                    break;
+                }
+
+                let sell_boll = &boll_15m[sell_boll_idx];
+
+                // 收盘价跌破布林上轨，卖出
+                if sell_k.close < sell_boll.upper {
+                    trades.push(TradeResult::new(
+                        symbol.to_string(),
+                        buy_time,
+                        buy_price,
+                        sell_k.close_time,
+                        sell_k.close,
+                    ));
+                    last_signal_time = Some(sell_k.close_time); // 卖出后开始冷却
+                    break;
+                }
+            }
+        }
+
+        Ok(trades)
     }
 
     fn load_all_klines(data_path: &Path, symbol: &str, interval: &str) -> Result<Vec<Kline>> {
