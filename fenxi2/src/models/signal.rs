@@ -55,6 +55,8 @@ pub struct BuySignal {
     pub boll_15m_upper: f64,
     pub boll_30m_middle: f64,
     pub boll_4h_middle: f64,
+    pub current_oi: f64,
+    pub min_oi_3d: f64,
     pub volume_ratio: f64,
 }
 
@@ -66,6 +68,8 @@ impl BuySignal {
         boll_15m_upper: f64,
         boll_30m_middle: f64,
         boll_4h_middle: f64,
+        current_oi: f64,
+        min_oi_3d: f64,
         volume_ratio: f64,
     ) -> Self {
         Self {
@@ -76,6 +80,8 @@ impl BuySignal {
             boll_15m_upper,
             boll_30m_middle,
             boll_4h_middle,
+            current_oi,
+            min_oi_3d,
             volume_ratio,
         }
     }

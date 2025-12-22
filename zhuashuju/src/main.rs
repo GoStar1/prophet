@@ -54,6 +54,22 @@ struct Ticker24h {
     quote_volume: String,
 }
 
+/// Binance 交易所信息响应
+#[derive(Debug, Deserialize)]
+struct ExchangeInfo {
+    symbols: Vec<SymbolInfo>,
+}
+
+/// 合约信息
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct SymbolInfo {
+    symbol: String,
+    #[serde(rename = "contractType")]
+    contract_type: String,
+    status: String,
+}
+
 /// 合约K线时间周期
 const KLINE_INTERVALS: [&str; 3] = ["15m", "30m", "4h"];
 
@@ -133,23 +149,47 @@ fn create_api_client() -> Result<Client> {
         .context("创建 API 客户端失败")
 }
 
-/// 获取合约交易量前N的USDT永续合约
+/// 获取合约交易量前N的USDT永续合约 (只获取活跃的永续合约)
 async fn get_futures_symbols(client: &Client, top_n: usize) -> Result<Vec<String>> {
-    println!("📊 正在获取合约交易量前 {} 的 USDT 永续合约...", top_n);
+    println!("📊 正在获取活跃的 USDT 永续合约...");
 
-    let url = "https://fapi.binance.com/fapi/v1/ticker/24hr";
-    let tickers: Vec<Ticker24h> = client
-        .get(url)
+    // 1. 获取交易所信息，筛选活跃的永续合约
+    let exchange_info: ExchangeInfo = client
+        .get("https://fapi.binance.com/fapi/v1/exchangeInfo")
         .send()
         .await
-        .context("请求 Binance Futures API 失败")?
+        .context("请求 exchangeInfo 失败")?
         .json()
         .await
-        .context("解析响应失败")?;
+        .context("解析 exchangeInfo 失败")?;
 
+    let perpetual_symbols: std::collections::HashSet<String> = exchange_info
+        .symbols
+        .into_iter()
+        .filter(|s| {
+            s.contract_type == "PERPETUAL"
+            && s.status == "TRADING"
+            && s.symbol.ends_with("USDT")
+        })
+        .map(|s| s.symbol)
+        .collect();
+
+    println!("✅ 找到 {} 个活跃的 USDT 永续合约", perpetual_symbols.len());
+
+    // 2. 获取24h交易量数据
+    let tickers: Vec<Ticker24h> = client
+        .get("https://fapi.binance.com/fapi/v1/ticker/24hr")
+        .send()
+        .await
+        .context("请求 ticker/24hr 失败")?
+        .json()
+        .await
+        .context("解析 ticker 失败")?;
+
+    // 3. 只保留活跃永续合约，并按交易量排序
     let mut usdt_pairs: Vec<(String, f64)> = tickers
         .into_iter()
-        .filter(|t| t.symbol.ends_with("USDT"))
+        .filter(|t| perpetual_symbols.contains(&t.symbol))
         .filter_map(|t| {
             let volume: f64 = t.quote_volume.parse().ok()?;
             Some((t.symbol, volume))
@@ -163,8 +203,6 @@ async fn get_futures_symbols(client: &Client, top_n: usize) -> Result<Vec<String
         .take(top_n)
         .map(|(s, _)| s)
         .collect();
-
-    println!("✅ 获取到 {} 个合约", symbols.len());
 
     println!("📈 交易量前10:");
     for (i, s) in symbols.iter().take(10).enumerate() {

@@ -1,5 +1,6 @@
 use crate::error::Result;
-use crate::models::{BuySignal, Kline, TradeResult};
+use crate::models::{BuySignal, Kline, Metrics, TradeResult};
+use std::collections::VecDeque;
 use std::fs::{self, File};
 use std::path::Path;
 
@@ -7,6 +8,7 @@ const BOLL_PERIOD: usize = 400;
 const BOLL_STD_DEV: f64 = 2.0;
 const HISTORY_CHECK_COUNT: usize = 50;
 const HISTORY_THRESHOLD: usize = 25;
+const OI_MULTIPLIER: f64 = 0.91;
 const COOLDOWN_MS: i64 = 2 * 24 * 60 * 60 * 1000; // 2天冷却期
 
 #[derive(Debug, Clone)]
@@ -27,6 +29,7 @@ impl FastScanner {
         let klines_15m = Self::load_all_klines(data_path, symbol, "15m")?;
         let klines_30m = Self::load_all_klines(data_path, symbol, "30m")?;
         let klines_4h = Self::load_all_klines(data_path, symbol, "4h")?;
+        let metrics = Self::load_all_metrics(data_path, symbol)?;
 
         if klines_15m.len() < BOLL_PERIOD
             || klines_30m.len() < BOLL_PERIOD
@@ -40,11 +43,13 @@ impl FastScanner {
         let boll_30m = Self::calc_all_boll(&klines_30m);
         let boll_4h = Self::calc_all_boll(&klines_4h);
 
+        let has_metrics = !metrics.is_empty();
         let mut signals = Vec::new();
 
-        // 用索引追踪30m、4h的位置
+        // 用索引追踪30m、4h和metrics的位置
         let mut idx_30m = 0usize;
         let mut idx_4h = 0usize;
+        let mut metrics_start = 0usize;
         let mut last_signal_time: Option<i64> = None; // 上次信号时间，用于冷却期
 
         for i in (BOLL_PERIOD - 1)..klines_15m.len() {
@@ -119,7 +124,18 @@ impl FastScanner {
                 continue;
             }
 
-            // 条件6: 4h成交量
+            // 条件6: 持仓量
+            let (current_oi, min_oi_3d, cond6) = if has_metrics {
+                Self::check_oi_condition(&metrics, timestamp, &mut metrics_start)
+            } else {
+                (0.0, 0.0, true)
+            };
+
+            if !cond6 {
+                continue;
+            }
+
+            // 条件7: 4h成交量
             let (cond7, volume_ratio) = Self::check_4h_volume(&klines_4h, idx_4h + BOLL_PERIOD);
 
             if !cond7 {
@@ -133,6 +149,8 @@ impl FastScanner {
                 b15.upper,
                 b30.middle,
                 b4h.middle,
+                current_oi,
+                min_oi_3d,
                 volume_ratio,
             ));
             last_signal_time = Some(timestamp); // 记录信号时间，开始2天冷却
@@ -146,6 +164,7 @@ impl FastScanner {
         let klines_15m = Self::load_all_klines(data_path, symbol, "15m")?;
         let klines_30m = Self::load_all_klines(data_path, symbol, "30m")?;
         let klines_4h = Self::load_all_klines(data_path, symbol, "4h")?;
+        let metrics = Self::load_all_metrics(data_path, symbol)?;
 
         if klines_15m.len() < BOLL_PERIOD
             || klines_30m.len() < BOLL_PERIOD
@@ -158,10 +177,12 @@ impl FastScanner {
         let boll_30m = Self::calc_all_boll(&klines_30m);
         let boll_4h = Self::calc_all_boll(&klines_4h);
 
+        let has_metrics = !metrics.is_empty();
         let mut trades = Vec::new();
 
         let mut idx_30m = 0usize;
         let mut idx_4h = 0usize;
+        let mut metrics_start = 0usize;
         let mut last_signal_time: Option<i64> = None;
 
         for i in (BOLL_PERIOD - 1)..klines_15m.len() {
@@ -228,7 +249,17 @@ impl FastScanner {
                 continue;
             }
 
-            // 条件6: 4h成交量
+            // 条件6
+            let (_, _, cond6) = if has_metrics {
+                Self::check_oi_condition(&metrics, timestamp, &mut metrics_start)
+            } else {
+                (0.0, 0.0, true)
+            };
+            if !cond6 {
+                continue;
+            }
+
+            // 条件7
             let (cond7, _) = Self::check_4h_volume(&klines_4h, idx_4h + BOLL_PERIOD);
             if !cond7 {
                 continue;
@@ -300,6 +331,31 @@ impl FastScanner {
         Ok(all_klines)
     }
 
+    fn load_all_metrics(data_path: &Path, symbol: &str) -> Result<Vec<Metrics>> {
+        let dir = data_path.join("metrics").join(symbol);
+        if !dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut files: Vec<_> = fs::read_dir(&dir)?
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().map(|e| e == "csv").unwrap_or(false))
+            .collect();
+        files.sort();
+
+        let mut all_metrics = Vec::new();
+        for file in files {
+            let f = File::open(&file)?;
+            let mut rdr = csv::Reader::from_reader(f);
+            for result in rdr.deserialize::<Metrics>() {
+                if let Ok(m) = result {
+                    all_metrics.push(m);
+                }
+            }
+        }
+        Ok(all_metrics)
+    }
 
     fn calc_all_boll(klines: &[Kline]) -> Vec<BollValue> {
         if klines.len() < BOLL_PERIOD {
@@ -331,6 +387,44 @@ impl FastScanner {
         }
 
         results
+    }
+
+    fn check_oi_condition(
+        metrics: &[Metrics],
+        timestamp: i64,
+        start_idx: &mut usize,
+    ) -> (f64, f64, bool) {
+        let three_days_ms = 3 * 24 * 60 * 60 * 1000_i64;
+        let start_time = timestamp - three_days_ms;
+
+        // 快进到接近当前时间的位置
+        while *start_idx + 1 < metrics.len() && metrics[*start_idx + 1].timestamp_ms() <= timestamp
+        {
+            *start_idx += 1;
+        }
+
+        let current_oi = if *start_idx < metrics.len() && metrics[*start_idx].timestamp_ms() <= timestamp {
+            metrics[*start_idx].sum_open_interest
+        } else {
+            return (0.0, 0.0, true);
+        };
+
+        // 找3天内最低持仓量
+        let mut min_oi = f64::MAX;
+        let mut j = *start_idx;
+        while j > 0 && metrics[j].timestamp_ms() >= start_time {
+            min_oi = min_oi.min(metrics[j].sum_open_interest);
+            j -= 1;
+        }
+        if j < metrics.len() && metrics[j].timestamp_ms() >= start_time {
+            min_oi = min_oi.min(metrics[j].sum_open_interest);
+        }
+
+        if min_oi == f64::MAX {
+            return (current_oi, 0.0, true);
+        }
+
+        (current_oi, min_oi, current_oi * OI_MULTIPLIER > min_oi)
     }
 
     fn check_4h_volume(klines: &[Kline], current_idx: usize) -> (bool, f64) {
