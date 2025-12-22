@@ -1,0 +1,6 @@
+   0.120356250s  INFO prepare_target{force=false package_id=prophet v0.1.0 (/Users/dahuzi/Desktop/prophet) target="prophet"}: cargo::core::compiler::fingerprint: fingerprint dirty for prophet v0.1.0 (/Users/dahuzi/Desktop/prophet)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("prophet", ["lib"], "/Users/dahuzi/Desktop/prophet/src/lib.rs", Edition2021) }
+   0.120637792s  INFO prepare_target{force=false package_id=prophet v0.1.0 (/Users/dahuzi/Desktop/prophet) target="prophet"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(Stale)
+   0.124866417s  INFO prepare_target{force=false package_id=prophet v0.1.0 (/Users/dahuzi/Desktop/prophet) target="prophet"}: cargo::core::compiler::fingerprint: fingerprint dirty for prophet v0.1.0 (/Users/dahuzi/Desktop/prophet)/Check { test: true }/TargetInner { name: "prophet", doc: true, ..: with_path("/Users/dahuzi/Desktop/prophet/src/main.rs", Edition2021) }
+   0.124882875s  INFO prepare_target{force=false package_id=prophet v0.1.0 (/Users/dahuzi/Desktop/prophet) target="prophet"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(Stale)
+    Checking prophet v0.1.0 (/Users/dahuzi/Desktop/prophet)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.79s
